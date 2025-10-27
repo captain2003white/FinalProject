@@ -7,6 +7,9 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 import numpy as np
 import warnings
 import os
+import mlflow
+import mlflow.sklearn
+from datetime import datetime
 from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore')
@@ -80,31 +83,72 @@ def evaluate_model(model, scaler, X_test, y_test):
     
     return accuracy, recall, precision, f1
 
+def train_with_mlflow(X, y, experiment_name="SVM_Experiment"):
+    """使用MLflow追踪模型训练"""
+    # 设置MLflow
+    mlflow.set_tracking_uri("file:///tmp/mlruns")  # 本地存储
+    mlflow.set_experiment(experiment_name)
+    
+    with mlflow.start_run(run_name=f"SVM_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+        # 记录参数
+        mlflow.log_param("C", 1.0)
+        mlflow.log_param("gamma", 0.1)
+        mlflow.log_param("kernel", "rbf")
+        mlflow.log_param("test_size", 0.3)
+        mlflow.log_param("random_state", 42)
+        
+        # 训练模型
+        model, scaler = train_and_evaluate_model(X, y)
+        
+        # 评估模型
+        _, X_test, _, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        X_test_std = scaler.transform(X_test)
+        y_pred = model.predict(X_test_std)
+        
+        # 计算指标
+        accuracy = accuracy_score(y_test, y_pred)
+        recall = recall_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred)
+        
+        # 记录指标
+        mlflow.log_metric("accuracy", accuracy)
+        mlflow.log_metric("recall", recall)
+        mlflow.log_metric("precision", precision)
+        mlflow.log_metric("f1_score", f1)
+        
+        # 记录模型
+        mlflow.sklearn.log_model(model, "svm_model")
+        
+        # 记录数据版本（通过DVC）
+        mlflow.log_param("data_version", "v1.0")
+        
+        return model, scaler, accuracy, recall, precision, f1
+
 def main():
     """主函数"""
     # 从环境变量读取配置
     secret_key = os.getenv('MY_SECRET_KEY', 'default_secret')
     data_path = os.getenv('DATA_PATH', 'data/train_and_test2.csv')
-    model_name = os.getenv('MODEL_NAME', 'SVM')
     
     print(f"Using secret key: {secret_key}")
     print(f"Data path: {data_path}")
-    print(f"Model name: {model_name}")
     
     # 读取数据集
-    df = pd.read_csv('data/train_and_test2.csv', encoding='utf-8')
+    df = pd.read_csv(data_path, encoding='utf-8')
     
     # 预处理数据
     X, y = preprocess_data(df)
     
-    # 训练模型
-    model, scaler = train_and_evaluate_model(X, y)
+    # 使用MLflow训练模型
+    print("Training with MLflow tracking...")
+    model, scaler, accuracy, recall, precision, f1 = train_with_mlflow(X, y)
     
-    # 划分测试集用于评估
-    _, X_test, _, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-    
-    # 评估模型
-    accuracy, recall, precision, f1 = evaluate_model(model, scaler, X_test, y_test)
+    print(f"\nFinal Results:")
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"F1 Score: {f1:.4f}")
     
     return accuracy, recall, precision, f1
 
