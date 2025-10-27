@@ -84,9 +84,15 @@ def evaluate_model(model, scaler, X_test, y_test):
     return accuracy, recall, precision, f1
 
 def train_with_mlflow(X, y, experiment_name="SVM_Experiment"):
-    """使用MLflow追踪模型训练"""
-    # 设置MLflow
-    mlflow.set_tracking_uri("file:///tmp/mlruns")  # 本地存储
+    """使用MLflow追踪模型训练并推送到DagsHub"""
+    
+    # 配置DagsHub的MLflow跟踪URI
+    mlflow.set_tracking_uri("https://dagshub.com/captain2003white/FinalProject.mlflow")
+    
+    # 设置DagsHub认证（如果需要）
+    os.environ['MLFLOW_TRACKING_USERNAME'] = 'captain2003white'
+    os.environ['MLFLOW_TRACKING_PASSWORD'] = 'bab328c8378dbe6d178cd5c02ad082b093ac2e97'
+    
     mlflow.set_experiment(experiment_name)
     
     with mlflow.start_run(run_name=f"SVM_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
