@@ -2,3 +2,5 @@
     remote = origin
 ['remote "origin"']
     url = https://dagshub.com/whitecaptain2003/FinalProject.dvc
+['remote "azure"']
+    url = azure://mlops-data-container
