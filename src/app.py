@@ -86,14 +86,22 @@ def evaluate_model(model, scaler, X_test, y_test):
 def train_with_mlflow(X, y, experiment_name="SVM_Experiment"):
     """使用MLflow追踪模型训练并推送到DagsHub"""
     
-    # 第一步：先设置认证环境变量
-    os.environ['MLFLOW_TRACKING_USERNAME'] = 'captain2003white'
-    os.environ['MLFLOW_TRACKING_PASSWORD'] = 'bab328c8378dbe6d178cd5c02ad082b093ac2e97'
-    
-    # 第二步：再配置DagsHub的MLflow跟踪URI
-    mlflow.set_tracking_uri("https://dagshub.com/captain2003white/FinalProject.mlflow")
-    
-    # 第三步：现在可以安全地设置实验
+    # 从环境变量读取
+    mlflow_username = os.getenv("MLFLOW_TRACKING_USERNAME")
+    mlflow_password = os.getenv("MLFLOW_TRACKING_PASSWORD")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+
+    if not all([mlflow_username, mlflow_password, tracking_uri]):
+        raise ValueError("缺少 DagsHub 的 MLflow 环境变量，请检查 .env 文件")
+
+    # 设置认证
+    os.environ["MLFLOW_TRACKING_USERNAME"] = mlflow_username
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = mlflow_password
+
+    # 配置 MLflow 跟踪 URI
+    mlflow.set_tracking_uri(tracking_uri)
+
+    # 设置实验
     mlflow.set_experiment(experiment_name)
     
     with mlflow.start_run(run_name=f"SVM_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
