@@ -7,8 +7,7 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_sc
 import numpy as np
 import warnings
 import os
-import mlflow
-import mlflow.sklearn
+import joblib
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -48,10 +47,10 @@ def train_and_evaluate_model(X, y, test_size=0.3, random_state=42):
     X_test_std = std.transform(X_test)
     
     # 实例化SVM
-    svm = SVC(C=1, gamma=0.1, kernel='rbf')
+    svm = SVC(C=1, gamma=0.1, kernel='rbf', probability=True)
     svm.fit(X_train_std, y_train)
     
-    return svm, std
+    return svm, std, X_test, y_test
 
 def evaluate_model(model, scaler, X_test, y_test):
     """评估模型性能"""
@@ -83,62 +82,57 @@ def evaluate_model(model, scaler, X_test, y_test):
     
     return accuracy, recall, precision, f1
 
-def train_with_mlflow(X, y, experiment_name="SVM_Experiment"):
-    """使用MLflow追踪模型训练并推送到DagsHub"""
+def save_model(model, scaler, X_columns, file_path="model"):
+    """保存模型和预处理对象到pkl文件"""
+    # 创建模型目录
+    os.makedirs(os.path.dirname(file_path) if os.path.dirname(file_path) else '.', exist_ok=True)
     
-    # 从环境变量读取
-    mlflow_username = os.getenv("MLFLOW_TRACKING_USERNAME")
-    mlflow_password = os.getenv("MLFLOW_TRACKING_PASSWORD")
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-
-    if not all([mlflow_username, mlflow_password, tracking_uri]):
-        raise ValueError("缺少 DagsHub 的 MLflow 环境变量，请检查 .env 文件")
-
-    # 设置认证
-    os.environ["MLFLOW_TRACKING_USERNAME"] = mlflow_username
-    os.environ["MLFLOW_TRACKING_PASSWORD"] = mlflow_password
-
-    # 配置 MLflow 跟踪 URI
-    mlflow.set_tracking_uri(tracking_uri)
-
-    # 设置实验
-    mlflow.set_experiment(experiment_name)
+    # 创建完整的模型状态
+    model_state = {
+        'model': model,
+        'scaler': scaler,
+        'feature_names': X_columns.tolist() if hasattr(X_columns, 'tolist') else list(X_columns),
+        'model_type': 'SVM',
+        'created_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
     
-    with mlflow.start_run(run_name=f"SVM_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-        # 记录参数
-        mlflow.log_param("C", 1.0)
-        mlflow.log_param("gamma", 0.1)
-        mlflow.log_param("kernel", "rbf")
-        mlflow.log_param("test_size", 0.3)
-        mlflow.log_param("random_state", 42)
-        
-        # 训练模型
-        model, scaler = train_and_evaluate_model(X, y)
-        
-        # 评估模型
-        _, X_test, _, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        X_test_std = scaler.transform(X_test)
-        y_pred = model.predict(X_test_std)
-        
-        # 计算指标
-        accuracy = accuracy_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        
-        # 记录指标
-        mlflow.log_metric("accuracy", accuracy)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("f1_score", f1)
-        
-        # 记录模型
-        mlflow.sklearn.log_model(model, "svm_model")
-        
-        # 记录数据版本（通过DVC）
-        mlflow.log_param("data_version", "v1.0")
-        
-        return model, scaler, accuracy, recall, precision, f1
+    # 保存模型状态
+    model_file = f"{file_path}_state.pkl"
+    joblib.dump(model_state, model_file)
+    print(f"模型状态已保存到: {model_file}")
+    
+    # 也可以单独保存模型和标准化器（可选）
+    joblib.dump(model, f"{file_path}.pkl")
+    joblib.dump(scaler, f"{file_path}_scaler.pkl")
+    
+    return model_file
+
+def load_model(file_path):
+    """从pkl文件加载模型状态"""
+    model_state = joblib.load(file_path)
+    print(f"模型加载成功，创建时间: {model_state.get('created_time', '未知')}")
+    return model_state
+
+def predict_with_model(model_state, new_data):
+    """使用加载的模型进行预测"""
+    model = model_state['model']
+    scaler = model_state['scaler']
+    
+    # 确保输入数据的特征顺序正确
+    if 'feature_names' in model_state:
+        expected_features = model_state['feature_names']
+        if hasattr(new_data, 'columns'):
+            # 如果new_data是DataFrame，确保列顺序一致
+            new_data = new_data[expected_features]
+    
+    # 标准化数据
+    new_data_std = scaler.transform(new_data)
+    
+    # 进行预测
+    predictions = model.predict(new_data_std)
+    probabilities = model.predict_proba(new_data_std)
+    
+    return predictions, probabilities
 
 def main():
     """主函数"""
@@ -155,9 +149,13 @@ def main():
     # 预处理数据
     X, y = preprocess_data(df)
     
-    # 使用MLflow训练模型
-    print("Training with MLflow tracking...")
-    model, scaler, accuracy, recall, precision, f1 = train_with_mlflow(X, y)
+    # 训练模型
+    print("Training model...")
+    model, scaler, X_test, y_test = train_and_evaluate_model(X, y)
+    
+    # 评估模型
+    print("Evaluating model...")
+    accuracy, recall, precision, f1 = evaluate_model(model, scaler, X_test, y_test)
     
     print(f"\nFinal Results:")
     print(f"Accuracy: {accuracy:.4f}")
@@ -165,7 +163,24 @@ def main():
     print(f"Precision: {precision:.4f}")
     print(f"F1 Score: {f1:.4f}")
     
-    return accuracy, recall, precision, f1
+    # 保存模型
+    print("\nSaving model...")
+    model_file = save_model(model, scaler, X.columns, "models/svm_model")
+    
+    # 演示加载和预测
+    print("\nTesting model loading and prediction...")
+    loaded_model_state = load_model(model_file)
+    
+    # 使用测试集的一部分进行预测演示
+    sample_data = X_test.head(5)
+    predictions, probabilities = predict_with_model(loaded_model_state, sample_data)
+    
+    print(f"\n预测演示 (前5个样本):")
+    print(f"预测结果: {predictions}")
+    print(f"实际标签: {y_test.head(5).values}")
+    print(f"预测概率: {probabilities}")
+    
+    return accuracy, recall, precision, f1, model_file
 
 if __name__ == "__main__":
-    main()
+    accuracy, recall, precision, f1, model_file = main()
