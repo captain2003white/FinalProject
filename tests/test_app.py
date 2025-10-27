@@ -43,24 +43,25 @@ def test_preprocess_data():
 def test_model_training():
     """测试模型训练功能"""
     X, y = make_classification(n_samples=100, n_features=5, random_state=42)
-    model, scaler = train_and_evaluate_model(X, y)
+    model, scaler, X_test, y_test = train_and_evaluate_model(X, y)
     
     assert model is not None
     assert hasattr(model, 'predict')
     assert scaler is not None
+    assert X_test is not None
+    assert y_test is not None
 
 def test_model_evaluation():
     """测试模型评估功能"""
     X, y = make_classification(n_samples=100, n_features=5, random_state=42)
-    model, scaler = train_and_evaluate_model(X, y)
+    model, scaler, X_test, y_test = train_and_evaluate_model(X, y)
     
-    # 生成预测
-    X_test, _ = make_classification(n_samples=20, n_features=5, random_state=42)
+    # 使用返回的测试数据进行预测
     X_test_scaled = scaler.transform(X_test)
     y_pred = model.predict(X_test_scaled)
     
     assert y_pred is not None
-    assert len(y_pred) == 20
+    assert len(y_pred) == len(y_test)
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

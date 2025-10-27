@@ -26,7 +26,7 @@ def preprocess_data(df):
     
     # 对缺失值进行向前填充
     if 'Embarked' in df.columns:
-        df['Embarked'].fillna(method='ffill', inplace=True)
+        df['Embarked'] = df['Embarked'].ffill()
     
     # 建立标签
     X = df.drop(['Passengerid', '2urvived'], axis=1)
